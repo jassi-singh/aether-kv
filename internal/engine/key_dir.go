@@ -1,9 +1,9 @@
 package engine
 
 type Key struct {
-	FileId    uint32
-	ValueSize uint32
-	Offset    int64
+	FileId uint32
+	Size   uint32
+	Offset int64
 }
 
 func NewKeyDir() map[string]*Key {

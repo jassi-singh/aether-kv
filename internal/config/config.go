@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"sync"
 
 	"gopkg.in/yaml.v2"
 )
@@ -9,23 +10,41 @@ import (
 // Config holds the application configuration values
 
 type Config struct {
-	DATA_DIR string `yaml:"DATA_DIR"`
-	HEADER_SIZE int `yaml:"HEADER_SIZE"`
+	DATA_DIR    string `yaml:"DATA_DIR"`
+	HEADER_SIZE uint32    `yaml:"HEADER_SIZE"`
 }
+
+var (
+	appConfig *Config
+	once      sync.Once
+	initErr   error
+)
 
 // LoadConfig reads configuration values from config.yml
 func LoadConfig() (*Config, error) {
-	file, err := os.ReadFile("config/config.yml")
-	if err != nil {
-		return nil, err
+	once.Do(func() {
+		file, err := os.ReadFile("config/config.yml")
+		if err != nil {
+			initErr = err
+			return
+		}
+
+		var appConfig Config
+		err = yaml.Unmarshal([]byte(os.ExpandEnv(string(file))), &appConfig)
+		if err != nil {
+			initErr = err
+			return
+		}
+	})
+	if initErr != nil {
+		return nil, initErr
 	}
+	return appConfig, initErr
+}
 
-	var appConfig Config
-	err = yaml.Unmarshal([]byte(os.ExpandEnv(string(file))), &appConfig)
-
-	if err != nil {
-		return nil, err
+func GetConfig() *Config {
+	if appConfig == nil {
+		panic("config not loaded")
 	}
-
-	return &appConfig, nil
+	return appConfig
 }

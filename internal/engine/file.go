@@ -3,6 +3,8 @@ package engine
 import (
 	"io"
 	"os"
+
+	"github.com/jassi-singh/aether-kv/internal/config"
 )
 
 type FileInterface interface {
@@ -16,7 +18,8 @@ type File struct {
 }
 
 func NewFile() (*File, error) {
-	file, err := os.OpenFile("/Users/jassi/Playground/aether-kv/data/active.log", os.O_APPEND|os.O_RDWR, 0644)
+	cfg := config.GetConfig()
+	file, err := os.OpenFile(cfg.DATA_DIR + "/active.log", os.O_APPEND|os.O_RDWR, 0644)
 	if err != nil {
 		return nil, err
 	}

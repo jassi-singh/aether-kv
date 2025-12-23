@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/jassi-singh/aether-kv/internal/config"
 	"github.com/jassi-singh/aether-kv/internal/format"
 )
 
@@ -38,12 +39,12 @@ func (e *KVEngine) Get(key string) (string, error) {
 		return "", errors.New("key not found")
 	}
 
-	data, err := e.file.ReadAt(keyEntry.Offset, keyEntry.ValueSize)
+	data, err := e.file.ReadAt(keyEntry.Offset, keyEntry.Size)
 	if err != nil {
 		slog.Error("get: error reading data",
 			"key", key,
 			"offset", keyEntry.Offset,
-			"size", keyEntry.ValueSize,
+			"size", keyEntry.Size,
 			"error", err)
 		return "", err
 	}
@@ -87,10 +88,11 @@ func (e *KVEngine) Put(key string, value string) error {
 		return err
 	}
 
+	cfg := config.GetConfig()
 	e.keyDir[key] = &Key{
-		FileId:    0, // assuming single file for simplicity
-		ValueSize: record.Valuesize + record.Keysize + 21,
-		Offset:    offset,
+		FileId: 0, // assuming single file for simplicity
+		Size:   record.Valuesize + record.Keysize + cfg.HEADER_SIZE,
+		Offset: offset,
 	}
 
 	slog.Debug("put: success",

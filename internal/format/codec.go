@@ -5,6 +5,8 @@ import (
 	"errors"
 	"hash/crc32"
 	"log/slog"
+
+	"github.com/jassi-singh/aether-kv/internal/config"
 )
 
 type Record struct {
@@ -23,15 +25,16 @@ type Codec interface {
 }
 
 func (r *Record) Encode() ([]byte, error) {
-	buffer := make([]byte, 21+len(r.Key)+len(r.Value))
+	cfg := config.GetConfig()
+	buffer := make([]byte, int(cfg.HEADER_SIZE)+len(r.Key)+len(r.Value))
 
 	binary.LittleEndian.PutUint64(buffer[4:12], r.Timestamp)
 	binary.LittleEndian.PutUint32(buffer[12:16], r.Keysize)
 	binary.LittleEndian.PutUint32(buffer[16:20], r.Valuesize)
 	buffer[20] = r.Flag
 
-	copy(buffer[21:21+len(r.Key)], r.Key)
-	copy(buffer[21+len(r.Key):], r.Value)
+	copy(buffer[cfg.HEADER_SIZE:int(cfg.HEADER_SIZE)+len(r.Key)], r.Key)
+	copy(buffer[int(cfg.HEADER_SIZE)+len(r.Key):], r.Value)
 
 	crc := crc32.ChecksumIEEE(buffer[4:])
 	binary.LittleEndian.PutUint32(buffer[0:4], crc)
@@ -40,11 +43,12 @@ func (r *Record) Encode() ([]byte, error) {
 }
 
 func Decode(data []byte) (*Record, error) {
-	if len(data) < 21 {
-		slog.Debug("decode: data too short",
+	cfg := config.GetConfig()
+	if len(data) < int(cfg.HEADER_SIZE) {
+		slog.Error("decode: data too short",
 			"actual_length", len(data),
-			"expected_min", 21)
-		return nil, errors.New("data too short: minimum 21 bytes required")
+			"expected_min", cfg.HEADER_SIZE)
+		return nil, errors.New("data too short: minimum header size required")
 	}
 
 	CRC := binary.LittleEndian.Uint32(data[0:4])
@@ -59,11 +63,11 @@ func Decode(data []byte) (*Record, error) {
 		Keysize:   Keysize,
 		Valuesize: Valuesize,
 		Flag:      Flag,
-		Key:       data[21 : 21+Keysize],
-		Value:     data[21+Keysize : 21+Keysize+Valuesize],
+		Key:       data[cfg.HEADER_SIZE : cfg.HEADER_SIZE+Keysize],
+		Value:     data[cfg.HEADER_SIZE+Keysize : cfg.HEADER_SIZE+Keysize+Valuesize],
 	}
 
-	expectedLength := 21 + int(Keysize) + int(Valuesize)
+	expectedLength := int(cfg.HEADER_SIZE + Keysize + Valuesize)
 	if len(data) < expectedLength {
 		slog.Error("decode: insufficient data",
 			"actual_length", len(data),
