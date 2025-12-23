@@ -22,21 +22,31 @@ func main() {
 	slog.SetDefault(logger)
 
 	// Load configuration
+	slog.Info("main: loading configuration")
 	cfg, err := config.LoadConfig()
 	if err != nil {
-		slog.Error("Failed to load config", "error", err)
+		slog.Error("main: failed to load configuration",
+			"error", err)
 		log.Fatalf("Failed to load config: %v", err)
 	}
-	slog.Info("Config loaded successfully", "DATA_DIR", cfg.DATA_DIR, "HEADER_SIZE", cfg.HEADER_SIZE)
+	slog.Info("main: configuration loaded successfully",
+		"data_dir", cfg.DATA_DIR,
+		"header_size", cfg.HEADER_SIZE)
 
 	kv, err := engine.NewKVEngine()
 	if err != nil {
-		slog.Error("Failed to create KV engine", "error", err)
+		slog.Error("main: failed to initialize KV engine",
+			"error", err)
 		log.Fatalf("Failed to create KV engine: %v", err)
 	}
-	defer kv.Close()
+	defer func() {
+		if err := kv.Close(); err != nil {
+			slog.Error("main: error closing KV engine",
+				"error", err)
+		}
+	}()
 
-	slog.Info("KV engine initialized successfully")
+	slog.Info("main: Aether KV started successfully")
 
 	scanner := bufio.NewScanner(os.Stdin)
 	fmt.Println("Aether KV - Simple Key-Value Store")
@@ -61,53 +71,70 @@ func main() {
 		switch command {
 		case "PUT":
 			if len(parts) < 3 {
+				slog.Warn("main: invalid PUT command - missing arguments")
 				fmt.Println("Usage: PUT <key> <value>")
 			} else {
 				key := parts[1]
 				value := strings.Join(parts[2:], " ")
+				slog.Debug("main: executing PUT command",
+					"key", key,
+					"value_size", len(value))
 				if err := kv.Put(key, value); err != nil {
-					slog.Error("put command failed", "key", key, "error", err)
+					slog.Error("main: PUT command failed",
+						"key", key,
+						"value_size", len(value),
+						"error", err)
 					fmt.Printf("Error: %v\n", err)
 				} else {
-					slog.Info("put command succeeded", "key", key)
 					fmt.Printf("OK\n")
 				}
 			}
 
 		case "GET":
 			if len(parts) < 2 {
+				slog.Warn("main: invalid GET command - missing key")
 				fmt.Println("Usage: GET <key>")
 			} else {
 				key := parts[1]
+				slog.Debug("main: executing GET command",
+					"key", key)
 				value, err := kv.Get(key)
 				if err != nil {
-					slog.Debug("get command failed", "key", key, "error", err)
+					slog.Debug("main: GET command failed",
+						"key", key,
+						"error", err)
 					fmt.Printf("Error: %v\n", err)
 				} else {
-					slog.Debug("get command succeeded", "key", key)
 					fmt.Printf("%s\n", value)
 				}
 			}
 
 		case "DELETE":
 			if len(parts) < 2 {
+				slog.Warn("main: invalid DELETE command - missing key")
 				fmt.Println("Usage: DELETE <key>")
 			} else {
 				key := parts[1]
+				slog.Debug("main: executing DELETE command",
+					"key", key)
 				if err := kv.Delete(key); err != nil {
-					slog.Error("delete command failed", "key", key, "error", err)
+					slog.Error("main: DELETE command failed",
+						"key", key,
+						"error", err)
 					fmt.Printf("Error: %v\n", err)
 				} else {
-					slog.Info("delete command succeeded", "key", key)
 					fmt.Println("OK")
 				}
 			}
 
 		case "EXIT", "QUIT":
+			slog.Info("main: shutdown requested by user")
 			fmt.Println("Goodbye!")
 			return
 
 		default:
+			slog.Warn("main: unknown command received",
+				"command", command)
 			fmt.Printf("Unknown command: %s\n", command)
 			fmt.Println("Commands: PUT <key> <value>, GET <key>, DELETE <key>, EXIT")
 		}
@@ -116,6 +143,8 @@ func main() {
 	}
 
 	if err := scanner.Err(); err != nil {
+		slog.Error("main: error reading input",
+			"error", err)
 		log.Fatalf("Error reading input: %v", err)
 	}
 }

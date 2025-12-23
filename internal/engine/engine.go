@@ -21,27 +21,40 @@ type KVEngine struct {
 }
 
 func NewKVEngine() (*KVEngine, error) {
+	slog.Info("engine: initializing KV engine")
+
 	file, err := NewFile()
 	if err != nil {
+		slog.Error("engine: failed to create file handler",
+			"error", err)
 		return nil, err
 	}
 
-	return &KVEngine{
+	engine := &KVEngine{
 		keyDir: NewKeyDir(),
 		file:   file,
-	}, nil
+	}
+
+	slog.Info("engine: KV engine initialized successfully")
+	return engine, nil
 }
 
 func (e *KVEngine) Get(key string) (string, error) {
 	keyEntry, ok := e.keyDir[key]
 	if !ok {
-		slog.Debug("get: key not found", "key", key)
+		slog.Debug("get: key not found in keyDir",
+			"key", key)
 		return "", errors.New("key not found")
 	}
 
+	slog.Debug("get: reading record from file",
+		"key", key,
+		"offset", keyEntry.Offset,
+		"size", keyEntry.Size)
+
 	data, err := e.file.ReadAt(keyEntry.Offset, keyEntry.Size)
 	if err != nil {
-		slog.Error("get: error reading data",
+		slog.Error("get: failed to read data from file",
 			"key", key,
 			"offset", keyEntry.Offset,
 			"size", keyEntry.Size,
@@ -51,14 +64,25 @@ func (e *KVEngine) Get(key string) (string, error) {
 
 	record, err := format.Decode(data)
 	if err != nil {
-		slog.Error("get: error decoding data",
+		slog.Error("get: failed to decode record",
 			"key", key,
 			"offset", keyEntry.Offset,
+			"size", keyEntry.Size,
 			"error", err)
 		return "", err
 	}
 
-	slog.Debug("get: success", "key", key)
+	// Check if record is a tombstone (future implementation)
+	if record.Flag == format.FlagTombstone {
+		slog.Debug("get: record is tombstone",
+			"key", key)
+		return "", errors.New("key not found")
+	}
+
+	slog.Info("get: success",
+		"key", key,
+		"value_size", len(record.Value),
+		"timestamp", record.Timestamp)
 	return string(record.Value), nil
 }
 
@@ -67,38 +91,45 @@ func (e *KVEngine) Put(key string, value string) error {
 		Timestamp: uint64(time.Now().Unix()),
 		Keysize:   uint32(len(key)),
 		Valuesize: uint32(len(value)),
-		Flag:      0,
+		Flag:      format.FlagNormal,
 		Key:       []byte(key),
 		Value:     []byte(value),
 	}
 
 	data, err := record.Encode()
 	if err != nil {
-		slog.Error("put: error encoding record",
+		slog.Error("put: failed to encode record",
 			"key", key,
+			"key_size", len(key),
+			"value_size", len(value),
 			"error", err)
 		return err
 	}
 
 	offset, err := e.file.Append(data)
 	if err != nil {
-		slog.Error("put: error appending to file",
+		slog.Error("put: failed to append data to file",
 			"key", key,
+			"data_size", len(data),
 			"error", err)
 		return err
 	}
 
 	cfg := config.GetConfig()
+	recordSize := record.Valuesize + record.Keysize + cfg.HEADER_SIZE
 	e.keyDir[key] = &Key{
 		FileId: 0, // assuming single file for simplicity
-		Size:   record.Valuesize + record.Keysize + cfg.HEADER_SIZE,
+		Size:   recordSize,
 		Offset: offset,
 	}
 
-	slog.Debug("put: success",
+	slog.Info("put: success",
 		"key", key,
 		"offset", offset,
-		"value_size", len(value))
+		"record_size", recordSize,
+		"key_size", len(key),
+		"value_size", len(value),
+		"timestamp", record.Timestamp)
 	return nil
 }
 
@@ -109,7 +140,10 @@ func (e *KVEngine) Delete(key string) error {
 
 func (e *KVEngine) Close() error {
 	if e.file != nil {
+		slog.Info("engine: closing KV engine",
+			"keys_in_memory", len(e.keyDir))
 		return e.file.Close()
 	}
+	slog.Warn("engine: close called but file handler is nil")
 	return nil
 }
