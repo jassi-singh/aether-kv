@@ -1,9 +1,11 @@
 package config
 
 import (
+	"log/slog"
 	"os"
 	"sync"
 
+	"github.com/joho/godotenv"
 	"gopkg.in/yaml.v2"
 )
 
@@ -11,7 +13,7 @@ import (
 
 type Config struct {
 	DATA_DIR    string `yaml:"DATA_DIR"`
-	HEADER_SIZE uint32    `yaml:"HEADER_SIZE"`
+	HEADER_SIZE uint32 `yaml:"HEADER_SIZE"`
 }
 
 var (
@@ -21,20 +23,29 @@ var (
 )
 
 // LoadConfig reads configuration values from config.yml
+// It automatically loads .env file if it exists (optional, no error if missing)
 func LoadConfig() (*Config, error) {
 	once.Do(func() {
-		file, err := os.ReadFile("config/config.yml")
+		// Load .env file if it exists (optional - no error if missing)
+		if err := godotenv.Load(); err != nil {
+			slog.Debug("No .env file found or error loading it", "error", err)
+		} else {
+			slog.Debug(".env file loaded successfully")
+		}
+
+		file, err := os.ReadFile("internal/config/config.yml")
 		if err != nil {
 			initErr = err
 			return
 		}
 
-		var appConfig Config
-		err = yaml.Unmarshal([]byte(os.ExpandEnv(string(file))), &appConfig)
+		var cfg Config
+		err = yaml.Unmarshal([]byte(os.ExpandEnv(string(file))), &cfg)
 		if err != nil {
 			initErr = err
 			return
 		}
+		appConfig = &cfg
 	})
 	if initErr != nil {
 		return nil, initErr
