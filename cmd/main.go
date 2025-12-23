@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/jassi-singh/aether-kv/internal/config"
 	"github.com/jassi-singh/aether-kv/internal/engine"
 )
 
@@ -19,6 +20,14 @@ func main() {
 	})
 	logger := slog.New(handler)
 	slog.SetDefault(logger)
+
+	// Load configuration
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		slog.Error("Failed to load config", "error", err)
+		log.Fatalf("Failed to load config: %v", err)
+	}
+	slog.Info("Config loaded successfully", "DATA_DIR", cfg.DATA_DIR, "HEADER_SIZE", cfg.HEADER_SIZE)
 
 	kv, err := engine.NewKVEngine()
 	if err != nil {

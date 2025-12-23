@@ -1,0 +1,4 @@
+# Configuration file
+
+DATA_DIR: ${DATA_DIR}
+HEADER_SIZE: ${HEADER_SIZE}
