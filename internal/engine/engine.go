@@ -1,7 +1,10 @@
 package engine
 
 import (
+	"bufio"
+	"encoding/binary"
 	"errors"
+	"io"
 	"log/slog"
 	"time"
 
@@ -162,56 +165,59 @@ func (e *KVEngine) GetKeyDirSize() int {
 func (e *KVEngine) RecoverKeyDir() error {
 	recoveredKeyDir := make(map[string]*Key)
 	cfg := config.GetConfig()
-	stat, err := e.file.file.Stat()
-	if err != nil {
-		slog.Error("recoverKeyDir: failed to get file stats",
-			"error", err)
-		return err
-	}
-	fileSize := stat.Size()
 
-	for offset := int64(0); int64(offset) < fileSize; {
-		slog.Debug("recoverKeyDir: reading header from file",
-			"offset", offset)
-		headerData, err := e.file.ReadAt(offset, int64(cfg.HEADER_SIZE))
+	reader := bufio.NewReader(e.file.file)
+	currentOffset := int64(0)
+
+	for {
+		headerBuf := make([]byte, cfg.HEADER_SIZE)
+		_, err := io.ReadFull(reader, headerBuf)
+		if err == io.EOF {
+			break // End of file reached normally
+		}
 		if err != nil {
-			slog.Error("recoverKeyDir: failed to read header from file",
+			slog.Error("recoverKeyDir: failed to read header",
 				"error", err)
 			return err
 		}
 
-		header, err := format.Decode(headerData)
+		keySize := binary.LittleEndian.Uint32(headerBuf[12:16])
+		valSize := binary.LittleEndian.Uint32(headerBuf[16:20])
+		totalRecordSize := cfg.HEADER_SIZE + keySize + valSize
+
+		bodyBuf := make([]byte, keySize+valSize)
+		_, err = io.ReadFull(reader, bodyBuf)
 		if err != nil {
-			slog.Error("recoverKeyDir: failed to decode header",
+			slog.Error("recoverKeyDir: failed to read body",
 				"error", err)
 			return err
 		}
 
-		data, err := e.file.ReadAt(offset, int64(cfg.HEADER_SIZE)+int64(header.Keysize)+int64(header.Valuesize))
-		if err != nil {
-			slog.Error("recoverKeyDir: failed to read data from file",
-				"error", err)
-			return err
-		}
-
-		record, err := format.Decode(data)
+		fullRecord := append(headerBuf, bodyBuf...)
+		record, err := format.Decode(fullRecord)
 		if err != nil {
 			slog.Error("recoverKeyDir: failed to decode record",
 				"error", err)
 			return err
 		}
 
-		recoveredKeyDir[string(record.Key)] = &Key{
-			FileId: 0,
-			Size:   record.Valuesize + record.Keysize + cfg.HEADER_SIZE,
-			Offset: offset,
+		if record.Flag == format.FlagTombstone {
+			slog.Debug("recoverKeyDir: tombstone record detected",
+				"key", string(record.Key))
+			delete(recoveredKeyDir, string(record.Key))
+		} else {
+			recoveredKeyDir[string(record.Key)] = &Key{
+				FileId: 0,
+				Size:   uint32(totalRecordSize),
+				Offset: currentOffset,
+			}
 		}
 
-		offset += int64(cfg.HEADER_SIZE) + int64(record.Keysize) + int64(record.Valuesize)
+		currentOffset += int64(totalRecordSize)
 	}
 
 	slog.Info("recoverKeyDir: recovered keyDir",
-		"keys_in_memory", len(recoveredKeyDir))
+		"size", len(recoveredKeyDir))
 
 	e.keyDir = recoveredKeyDir
 	return nil
