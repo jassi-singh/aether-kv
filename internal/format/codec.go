@@ -63,36 +63,38 @@ func Decode(data []byte) (*Record, error) {
 	Valuesize := binary.LittleEndian.Uint32(data[16:20])
 	Flag := data[20]
 
+	Key := make([]byte, Keysize)
+	Value := make([]byte, Valuesize)
+	isHeaderOnly := len(data) == int(cfg.HEADER_SIZE)
+
+	if isHeaderOnly {
+		slog.Debug("decode: reading only header")
+	} else {
+		copy(Key, data[cfg.HEADER_SIZE:cfg.HEADER_SIZE+Keysize])
+		copy(Value, data[cfg.HEADER_SIZE+Keysize:cfg.HEADER_SIZE+Keysize+Valuesize])
+	}
+
 	record := &Record{
 		CRC:       CRC,
 		Timestamp: Timestamp,
 		Keysize:   Keysize,
 		Valuesize: Valuesize,
 		Flag:      Flag,
-		Key:       data[cfg.HEADER_SIZE : cfg.HEADER_SIZE+Keysize],
-		Value:     data[cfg.HEADER_SIZE+Keysize : cfg.HEADER_SIZE+Keysize+Valuesize],
+		Key:       Key,
+		Value:     Value,
 	}
 
-	expectedLength := int(cfg.HEADER_SIZE + Keysize + Valuesize)
-	if len(data) < expectedLength {
-		slog.Error("decode: insufficient data - incomplete record",
-			"actual_length", len(data),
-			"expected_length", expectedLength,
-			"keysize", Keysize,
-			"valuesize", Valuesize,
-			"header_size", cfg.HEADER_SIZE)
-		return nil, errors.New("data too short: insufficient data for key and value")
-	}
-
-	calculatedCRC := crc32.ChecksumIEEE(data[4:expectedLength])
-	if calculatedCRC != CRC {
-		slog.Error("decode: CRC mismatch - data corruption detected",
-			"calculated_crc", calculatedCRC,
-			"expected_crc", CRC,
-			"data_length", expectedLength,
-			"keysize", Keysize,
-			"valuesize", Valuesize)
-		return nil, errors.New("crc mismatch: data corruption detected")
+	if !isHeaderOnly {
+		calculatedCRC := crc32.ChecksumIEEE(data[4:])
+		if calculatedCRC != CRC {
+			slog.Error("decode: CRC mismatch - data corruption detected",
+				"calculated_crc", calculatedCRC,
+				"expected_crc", CRC,
+				"data_length", len(data),
+				"keysize", Keysize,
+				"valuesize", Valuesize)
+			return nil, errors.New("crc mismatch: data corruption detected")
+		}
 	}
 
 	// Log tombstone records for debugging

@@ -35,6 +35,13 @@ func NewKVEngine() (*KVEngine, error) {
 		file:   file,
 	}
 
+	err = engine.RecoverKeyDir()
+	if err != nil {
+		slog.Error("engine: failed to recover keyDir",
+			"error", err)
+		return nil, err
+	}
+
 	slog.Info("engine: KV engine initialized successfully")
 	return engine, nil
 }
@@ -52,7 +59,7 @@ func (e *KVEngine) Get(key string) (string, error) {
 		"offset", keyEntry.Offset,
 		"size", keyEntry.Size)
 
-	data, err := e.file.ReadAt(keyEntry.Offset, keyEntry.Size)
+	data, err := e.file.ReadAt(keyEntry.Offset, int64(keyEntry.Size))
 	if err != nil {
 		slog.Error("get: failed to read data from file",
 			"key", key,
@@ -145,5 +152,67 @@ func (e *KVEngine) Close() error {
 		return e.file.Close()
 	}
 	slog.Warn("engine: close called but file handler is nil")
+	return nil
+}
+
+func (e *KVEngine) GetKeyDirSize() int {
+	return len(e.keyDir)
+}
+
+func (e *KVEngine) RecoverKeyDir() error {
+	recoveredKeyDir := make(map[string]*Key)
+	cfg := config.GetConfig()
+	stat, err := e.file.file.Stat()
+	if err != nil {
+		slog.Error("recoverKeyDir: failed to get file stats",
+			"error", err)
+		return err
+	}
+	fileSize := stat.Size()
+
+	for offset := int64(0); int64(offset) < fileSize; {
+		slog.Debug("recoverKeyDir: reading header from file",
+			"offset", offset)
+		headerData, err := e.file.ReadAt(offset, int64(cfg.HEADER_SIZE))
+		if err != nil {
+			slog.Error("recoverKeyDir: failed to read header from file",
+				"error", err)
+			return err
+		}
+
+		header, err := format.Decode(headerData)
+		if err != nil {
+			slog.Error("recoverKeyDir: failed to decode header",
+				"error", err)
+			return err
+		}
+
+		data, err := e.file.ReadAt(offset, int64(cfg.HEADER_SIZE)+int64(header.Keysize)+int64(header.Valuesize))
+		if err != nil {
+			slog.Error("recoverKeyDir: failed to read data from file",
+				"error", err)
+			return err
+		}
+
+		record, err := format.Decode(data)
+		if err != nil {
+			slog.Error("recoverKeyDir: failed to decode record",
+				"error", err)
+			return err
+		}
+
+		recoveredKeyDir[string(record.Key)] = &Key{
+			FileId: 0,
+			Size:   record.Valuesize + record.Keysize + cfg.HEADER_SIZE,
+			Offset: offset,
+		}
+
+		offset += int64(cfg.HEADER_SIZE) + int64(record.Keysize) + int64(record.Valuesize)
+	}
+
+	slog.Info("recoverKeyDir: recovered keyDir",
+		"keys_in_memory", len(recoveredKeyDir))
+
+	e.keyDir = recoveredKeyDir
 	return nil
 }

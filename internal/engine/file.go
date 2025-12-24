@@ -89,7 +89,7 @@ func (f *File) Append(data []byte) (int64, error) {
 	return offset, nil
 }
 
-func (f *File) ReadAt(offset int64, size uint32) ([]byte, error) {
+func (f *File) ReadAt(offset int64, size int64) ([]byte, error) {
 	slog.Debug("file: reading data from file",
 		"offset", offset,
 		"size", size)
