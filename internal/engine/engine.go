@@ -163,7 +163,38 @@ func (e *KVEngine) Put(key string, value string) error {
 }
 
 func (e *KVEngine) Delete(key string) error {
-	// implementation for deleting a key-value pair
+	record := &format.Record{
+		Timestamp: uint64(time.Now().Unix()),
+		Keysize:   uint32(len(key)),
+		Valuesize: 0,
+		Flag:      format.FlagTombstone,
+		Key:       []byte(key),
+		Value:     nil,
+	}
+
+	data, err := record.Encode()
+	if err != nil {
+		slog.Error("delete: failed to encode record",
+			"key", key,
+			"key_size", len(key),
+			"error", err)
+		return err
+	}
+
+	offset, err := e.file.Append(data)
+	if err != nil {
+		slog.Error("delete: failed to append data to file",
+			"key", key,
+			"data_size", len(data),
+			"error", err)
+		return err
+	}
+
+	delete(e.keyDir, key)
+
+	slog.Info("delete: success",
+		"key", key,
+		"offset", offset)
 	return nil
 }
 
