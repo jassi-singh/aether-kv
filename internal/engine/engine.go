@@ -186,9 +186,18 @@ func (e *KVEngine) RecoverKeyDir() error {
 		totalRecordSize := cfg.HEADER_SIZE + keySize + valSize
 
 		bodyBuf := make([]byte, keySize+valSize)
-		_, err = io.ReadFull(reader, bodyBuf)
+		bytesRead, err := io.ReadFull(reader, bodyBuf)
+		if err == io.EOF || err == io.ErrUnexpectedEOF {
+			// Incomplete record - file was likely truncated or write was interrupted
+			slog.Warn("recoverKeyDir: incomplete record detected at end of file, stopping recovery",
+				"offset", currentOffset,
+				"expected_body_size", keySize+valSize,
+				"bytes_read", bytesRead)
+			break // Stop recovery - we've reached the end of valid data
+		}
 		if err != nil {
 			slog.Error("recoverKeyDir: failed to read body",
+				"offset", currentOffset,
 				"error", err)
 			return err
 		}

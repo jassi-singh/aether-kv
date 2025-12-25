@@ -12,8 +12,10 @@ import (
 // Config holds the application configuration values
 
 type Config struct {
-	DATA_DIR    string `yaml:"DATA_DIR"`
-	HEADER_SIZE uint32 `yaml:"HEADER_SIZE"`
+	DATA_DIR      string `yaml:"DATA_DIR"`
+	HEADER_SIZE   uint32 `yaml:"HEADER_SIZE"`
+	BATCH_SIZE    uint32 `yaml:"BATCH_SIZE"`
+	SYNC_INTERVAL uint32 `yaml:"SYNC_INTERVAL"`
 }
 
 var (

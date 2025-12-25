@@ -31,7 +31,10 @@ func main() {
 	}
 	slog.Info("main: configuration loaded successfully",
 		"data_dir", cfg.DATA_DIR,
-		"header_size", cfg.HEADER_SIZE)
+		"header_size", cfg.HEADER_SIZE,
+		"batch_size", cfg.BATCH_SIZE,
+		"sync_interval", cfg.SYNC_INTERVAL,
+	)
 
 	kv, err := engine.NewKVEngine()
 	if err != nil {

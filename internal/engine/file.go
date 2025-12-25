@@ -1,9 +1,11 @@
 package engine
 
 import (
+	"bufio"
 	"io"
 	"log/slog"
 	"os"
+	"time"
 
 	"github.com/jassi-singh/aether-kv/internal/config"
 )
@@ -15,7 +17,9 @@ type FileInterface interface {
 }
 
 type File struct {
-	file *os.File
+	buffer       *bufio.Writer
+	file         *os.File
+	lastSyncTime time.Time
 }
 
 func NewFile() (*File, error) {
@@ -47,21 +51,52 @@ func NewFile() (*File, error) {
 	}
 
 	return &File{
-		file: file,
+		file:         file,
+		buffer:       bufio.NewWriter(file),
+		lastSyncTime: time.Now(),
 	}, nil
 }
 
+// flushAndSync flushes the buffer to disk and syncs the file
+func (f *File) flushAndSync() error {
+	err := f.buffer.Flush()
+	if err != nil {
+		slog.Error("file: failed to flush buffer",
+			"error", err)
+		return err
+	}
+
+	err = f.file.Sync()
+	if err != nil {
+		slog.Error("file: failed to sync file after flush",
+			"error", err)
+		return err
+	}
+
+	f.lastSyncTime = time.Now()
+	slog.Debug("file: buffer flushed, file synced, and last sync time updated",
+		"last_sync_time", f.lastSyncTime)
+	return nil
+}
+
 func (f *File) Append(data []byte) (int64, error) {
-	offset, err := f.file.Seek(0, io.SeekEnd)
+	cfg := config.GetConfig()
+	// Use buffered writer instead of direct file write
+	fileSize, err := f.file.Seek(0, io.SeekEnd)
 	if err != nil {
 		slog.Error("file: failed to seek to end of file",
 			"error", err)
 		return 0, err
 	}
 
-	bytesWritten, err := f.file.Write(data)
+	// Calculate the actual offset where data will be written
+	// This accounts for any unflushed data in the buffer
+	bufferSize := int64(f.buffer.Size())
+	offset := fileSize + bufferSize
+
+	bytesWritten, err := f.buffer.Write(data)
 	if err != nil {
-		slog.Error("file: failed to write data",
+		slog.Error("file: failed to write data to buffer",
 			"offset", offset,
 			"data_size", len(data),
 			"error", err)
@@ -69,23 +104,23 @@ func (f *File) Append(data []byte) (int64, error) {
 	}
 
 	if bytesWritten != len(data) {
-		slog.Warn("file: partial write detected",
+		slog.Warn("file: partial buffer write detected",
 			"expected", len(data),
 			"written", bytesWritten,
 			"offset", offset)
 	}
 
-	err = f.file.Sync()
-	if err != nil {
-		slog.Error("file: failed to sync data to disk",
-			"offset", offset,
-			"error", err)
-		return 0, err
+	if int64(f.buffer.Size()) >= int64(cfg.BATCH_SIZE) || time.Since(f.lastSyncTime) >= time.Duration(cfg.SYNC_INTERVAL)*time.Second {
+		slog.Warn("file: batch size or sync interval reached, flushing buffer and syncing file",
+			"buffer_size", f.buffer.Size(),
+			"batch_size", cfg.BATCH_SIZE,
+			"sync_interval", cfg.SYNC_INTERVAL,
+			"since_last_sync", time.Since(f.lastSyncTime),
+		)
+		if err := f.flushAndSync(); err != nil {
+			return 0, err
+		}
 	}
-
-	slog.Debug("file: data appended successfully",
-		"offset", offset,
-		"size", len(data))
 	return offset, nil
 }
 
@@ -116,6 +151,16 @@ func (f *File) ReadAt(offset int64, size int64) ([]byte, error) {
 
 func (f *File) Close() error {
 	slog.Debug("file: closing file handler")
+
+	// Flush any remaining data in the buffer before closing
+	if f.buffer != nil {
+		if err := f.flushAndSync(); err != nil {
+			slog.Error("file: failed to flush buffer before close",
+				"error", err)
+			// Continue to close the file even if flush fails
+		}
+	}
+
 	err := f.file.Close()
 	if err != nil {
 		slog.Error("file: failed to close file",
