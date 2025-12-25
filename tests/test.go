@@ -23,7 +23,7 @@ func main() {
 	slog.SetDefault(logger)
 
 	// Load configuration
-	_, err := config.LoadConfig()
+	cfg, err := config.LoadConfig()
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
@@ -37,11 +37,11 @@ func main() {
 
 	switch testName {
 	case "100k-write":
-		test100kWrite()
+		test100kWrite(cfg)
 	case "overlapping":
-		testOverlappingKey()
+		testOverlappingKey(cfg)
 	case "integrity":
-		testIntegrity()
+		testIntegrity(cfg)
 	default:
 		fmt.Printf("Unknown test: %s\n", testName)
 		printUsage()
@@ -58,12 +58,12 @@ func printUsage() {
 }
 
 // Test 1: 100k Write Test (Speed & Integrity)
-func test100kWrite() {
+func test100kWrite(cfg *config.Config) {
 	fmt.Println("=" + strings.Repeat("=", 60))
 	fmt.Println("Test 1: 100k Write Test (Speed & Integrity)")
 	fmt.Println("=" + strings.Repeat("=", 60))
 
-	kv, err := engine.NewKVEngine()
+	kv, err := engine.NewKVEngine(cfg)
 	if err != nil {
 		log.Fatalf("Failed to create KV engine: %v", err)
 	}
@@ -106,7 +106,6 @@ func test100kWrite() {
 	}
 
 	// Check file size
-	cfg := config.GetConfig()
 	filePath := filepath.Join(cfg.DATA_DIR, "active.log")
 	stat, err := os.Stat(filePath)
 	if err != nil {
@@ -132,12 +131,12 @@ func test100kWrite() {
 }
 
 // Test 2: Overlapping Key Test
-func testOverlappingKey() {
+func testOverlappingKey(cfg *config.Config) {
 	fmt.Println("=" + strings.Repeat("=", 60))
 	fmt.Println("Test 2: Overlapping Key Test")
 	fmt.Println("=" + strings.Repeat("=", 60))
 
-	kv, err := engine.NewKVEngine()
+	kv, err := engine.NewKVEngine(cfg)
 	if err != nil {
 		log.Fatalf("Failed to create KV engine: %v", err)
 	}
@@ -148,7 +147,6 @@ func testOverlappingKey() {
 	valueB := "value_B"
 
 	// Get initial file size
-	cfg := config.GetConfig()
 	filePath := filepath.Join(cfg.DATA_DIR, "active.log")
 	initialStat, _ := os.Stat(filePath)
 	initialSize := int64(0)
@@ -206,12 +204,12 @@ func testOverlappingKey() {
 }
 
 // Test 3: Integrity Test (Read-Back)
-func testIntegrity() {
+func testIntegrity(cfg *config.Config) {
 	fmt.Println("=" + strings.Repeat("=", 60))
 	fmt.Println("Test 3: Integrity Test (Read-Back)")
 	fmt.Println("=" + strings.Repeat("=", 60))
 
-	kv, err := engine.NewKVEngine()
+	kv, err := engine.NewKVEngine(cfg)
 	if err != nil {
 		log.Fatalf("Failed to create KV engine: %v", err)
 	}

@@ -1,3 +1,6 @@
+// Package config provides configuration management for the key-value store.
+// It loads settings from YAML files and environment variables, with
+// thread-safe singleton access.
 package config
 
 import (
@@ -9,13 +12,12 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
-// Config holds the application configuration values
-
+// Config holds all application configuration values.
 type Config struct {
-	DATA_DIR      string `yaml:"DATA_DIR"`
-	HEADER_SIZE   uint32 `yaml:"HEADER_SIZE"`
-	BATCH_SIZE    uint32 `yaml:"BATCH_SIZE"`
-	SYNC_INTERVAL uint32 `yaml:"SYNC_INTERVAL"`
+	DATA_DIR      string `yaml:"DATA_DIR"`      // Directory where log files are stored
+	HEADER_SIZE   uint32 `yaml:"HEADER_SIZE"`   // Size of record header in bytes
+	BATCH_SIZE    uint32 `yaml:"BATCH_SIZE"`    // Buffer size threshold for auto-flush
+	SYNC_INTERVAL uint32 `yaml:"SYNC_INTERVAL"` // Time interval in seconds for auto-sync
 }
 
 var (
@@ -24,8 +26,10 @@ var (
 	initErr   error
 )
 
-// LoadConfig reads configuration values from config.yml
-// It automatically loads .env file if it exists (optional, no error if missing)
+// LoadConfig reads configuration values from config.yml and optionally from .env file.
+// It uses a sync.Once to ensure configuration is loaded only once, even with
+// concurrent calls. Environment variables in the YAML file are expanded using
+// os.ExpandEnv. Returns the loaded configuration and any error encountered.
 func LoadConfig() (*Config, error) {
 	once.Do(func() {
 		// Load .env file if it exists (optional - no error if missing)
@@ -55,9 +59,12 @@ func LoadConfig() (*Config, error) {
 	return appConfig, initErr
 }
 
+// GetConfig returns the singleton configuration instance.
+// Panics if configuration has not been loaded yet. This function should
+// only be called after LoadConfig has been successfully called.
 func GetConfig() *Config {
 	if appConfig == nil {
-		panic("config not loaded")
+		panic("config not loaded - call LoadConfig() first")
 	}
 	return appConfig
 }
