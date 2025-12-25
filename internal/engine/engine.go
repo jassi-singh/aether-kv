@@ -16,6 +16,9 @@ type Engine interface {
 	Get(key string) (string, error)
 	Put(key string, value string) error
 	Delete(key string) error
+	Close() error
+	GetKeyDirSize() int
+	RecoverKeyDir() error
 }
 
 type KVEngine struct {
@@ -61,6 +64,22 @@ func (e *KVEngine) Get(key string) (string, error) {
 		"key", key,
 		"offset", keyEntry.Offset,
 		"size", keyEntry.Size)
+
+	fileSize, err := e.file.file.Seek(0, io.SeekEnd)
+	if err != nil {
+		slog.Error("get: failed to seek to end of file",
+			"error", err)
+		return "", err
+	}
+
+	bufferedSize := int64(e.file.buffer.Buffered())
+	unflushedStart := fileSize
+
+	if keyEntry.Offset >= unflushedStart && keyEntry.Offset < unflushedStart+bufferedSize {
+		if err := e.file.flushAndSync(); err != nil {
+			return "", err
+		}
+	}
 
 	data, err := e.file.ReadAt(keyEntry.Offset, int64(keyEntry.Size))
 	if err != nil {

@@ -91,7 +91,7 @@ func (f *File) Append(data []byte) (int64, error) {
 
 	// Calculate the actual offset where data will be written
 	// This accounts for any unflushed data in the buffer
-	bufferSize := int64(f.buffer.Size())
+	bufferSize := int64(f.buffer.Buffered())
 	offset := fileSize + bufferSize
 
 	bytesWritten, err := f.buffer.Write(data)
