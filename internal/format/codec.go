@@ -13,6 +13,7 @@ import (
 const (
 	FlagNormal    uint8 = 0 // Normal log entry containing a key-value pair
 	FlagTombstone uint8 = 1 // Tombstone marker indicating a deleted entry
+	FlagCommit    uint8 = 2 // Commit marker indicating a transaction commit
 )
 
 // Record represents a single key-value entry in the log file.

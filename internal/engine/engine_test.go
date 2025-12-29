@@ -257,3 +257,46 @@ func TestKVEngine_ConcurrentOperations(t *testing.T) {
 		t.Errorf("Failed to get after concurrent operations: %v", err)
 	}
 }
+
+func TestKVEngine_RecoverKeyDir(t *testing.T) {
+	cfg := setupTestConfig(t)
+	defer cleanupTestFiles(cfg)
+
+	engine, err := NewKVEngine(cfg)
+	if err != nil {
+		t.Fatalf("Failed to create engine: %v", err)
+	}
+	defer engine.Close()
+
+	// Add some keys
+	for i := 0; i < 5; i++ {
+		key := fmt.Sprintf("key%d", i)
+		if err := engine.Put(key, "value"); err != nil {
+			t.Fatalf("Failed to put key: %v", err)
+		}
+	}
+
+	// Recover the key directory
+	err = engine.RecoverKeyDir()
+	if err != nil {
+		t.Fatalf("Failed to recover key directory: %v", err)
+	}
+
+	// Verify the key directory is recovered
+	size := engine.GetKeyDirSize()
+	if size != 5 {
+		t.Errorf("GetKeyDirSize() = %v, want %v", size, 5)
+	}
+
+	// Verify we can read the keys
+	for i := 0; i < 5; i++ {
+		key := fmt.Sprintf("key%d", i)
+		got, err := engine.Get(key)
+		if err != nil {
+			t.Errorf("Failed to get key: %v", err)
+		}
+		if got != "value" {
+			t.Errorf("Get() = %v, want %v", got, "value")
+		}
+	}
+}

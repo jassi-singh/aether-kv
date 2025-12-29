@@ -55,6 +55,18 @@ func TestRecord_Encode(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "commit record",
+			record: &Record{
+				Timestamp: 1234567890,
+				Keysize:   0,
+				Valuesize: 0,
+				Flag:      FlagCommit,
+				Key:       []byte{},
+				Value:     nil,
+			},
+			wantErr: false,
+		},
 	}
 
 	for _, tt := range tests {

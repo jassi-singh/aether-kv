@@ -171,8 +171,20 @@ func (e *KVEngine) Put(key string, value string) error {
 	if err != nil {
 		return fmt.Errorf("failed to encode record for key %s: %w", key, err)
 	}
+	commitRecord := &format.Record{
+		Timestamp: uint64(time.Now().Unix()),
+		Keysize:   0,
+		Valuesize: 0,
+		Flag:      format.FlagCommit,
+		Key:       []byte{},
+		Value:     nil,
+	}
+	commitData, err := commitRecord.Encode(e.cfg.HEADER_SIZE)
+	if err != nil {
+		return fmt.Errorf("failed to encode commit record: %w", err)
+	}
 
-	offset, err := e.file.Append(data)
+	offset, err := e.file.Append(append(data, commitData...))
 	if err != nil {
 		return fmt.Errorf("failed to append data to file for key %s: %w", key, err)
 	}
@@ -279,6 +291,14 @@ func (e *KVEngine) scanLogFile(reader *bufio.Reader) (int, error) {
 	count := 0
 	currentOffset := int64(0)
 
+	type recordWithOffsetAndSize struct {
+		record *format.Record
+		offset int64
+		size   int
+	}
+
+	recordsToCommit := make([]recordWithOffsetAndSize, 0)
+
 	for {
 		record, recordSize, err := e.readNextRecord(reader, currentOffset)
 		if err == io.EOF {
@@ -288,9 +308,20 @@ func (e *KVEngine) scanLogFile(reader *bufio.Reader) (int, error) {
 			return 0, fmt.Errorf("failed to read record at offset %d: %w", currentOffset, err)
 		}
 
-		if e.processRecoveredRecord(record, currentOffset, recordSize) {
-			count++
+		if record.Flag == format.FlagCommit {
+			for _, record := range recordsToCommit {
+				if e.processRecoveredRecord(record.record, record.offset, record.size) {
+					count++
+				}
+			}
+			recordsToCommit = make([]recordWithOffsetAndSize, 0)
+		} else {
+			recordsToCommit = append(recordsToCommit, recordWithOffsetAndSize{
+				record: record,
+				size:   recordSize,
+			})
 		}
+
 		currentOffset += int64(recordSize)
 	}
 
